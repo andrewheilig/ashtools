@@ -1,0 +1,123 @@
+.pennywise .App {
+  text-align: center;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}.pennywise .App > div {
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}.pennywise .custom-button {
+  background-color: #28a745;
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: background-color 0.3s ease;
+}.pennywise .custom-button:hover {
+  background-color: #218838;
+}.pennywise .custom-button:active {
+  transform: translateY(1px);
+}.pennywise {
+  font-family: monospace;
+  background-color: #fafafa;
+  padding: 20px;
+}.pennywise p {
+  margin: 4px 0;
+}.pennywise .players {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  width: fit-content;
+  height: fit-content;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 10px;
+  width: fit-content;
+  height: fit-content;
+}.pennywise .players div {
+  margin: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background-color: #f0f0f0;
+  width: fit-content;
+  height: fit-content;
+}.pennywise #buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  height: fit-content;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}.pennywise .players .table {
+  background-color: #5bf !important;
+  border: 1px groove #00f !important;
+  color: #00f !important;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 10px;
+  width: fit-content;
+  height: fit-content;
+  font-weight: bold;
+  font-size: 16px;
+  font-family: monospace;
+  text-align: center;
+  text-shadow: 1px 1px 1px #000;
+}.pennywise #log {
+  margin: 20px;
+  padding: 15px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+  max-height: 350px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+  scroll-behavior: smooth;
+}.pennywise #log p {
+  margin: 3px 0;
+  padding: 2px 0;
+  word-wrap: break-word;
+}.pennywise #log #buttons {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+}.pennywise .game-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}.pennywise .stats-section {
+  flex-shrink: 0;
+}.pennywise .log-section {
+  flex: 1;
+  min-height: 0;
+}
+.pennywise { border: 1px solid var(--border); border-radius: 8px; }
+.pennywise h1 { font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1.1; }
+.pennywise .players { flex-wrap: wrap; max-width: 100%; margin: 0; }
+.pennywise .players h1 { font-size: 1.4rem; overflow-wrap: anywhere; }
+.pennywise input[type="text"] { max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.pennywise #log { margin: 0; }
+.pennywise #log p { white-space: pre-line; }
+.pennywise .custom-button { max-width: 100%; }
+.pennywise button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 520px) {
+  .pennywise { padding: 12px; }
+  .pennywise .players { align-items: stretch; }
+  .pennywise .players > div { flex: 1 1 100%; margin: 4px; }
+}

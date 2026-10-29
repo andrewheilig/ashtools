@@ -3,9 +3,11 @@ import './App.css'
 
 const Pennywise = lazy(() => import('./tools/pennywise/Pennywise.jsx'))
 const LanguageModelLab = lazy(() => import('./tools/language-model/App.jsx'))
+const QuantumWordle = lazy(() => import('./tools/quantum-wordle/App.jsx'))
 const tools = [
   { path: '/pennywise', title: 'Pennywise', category: 'Coin strategy game', description: 'Play coins, collect change, and challenge a Greedy or Threshold computer opponent.', Component: Pennywise, className: 'pennywise' },
   { path: '/language-model', title: 'Language Model Lab', category: 'Text generation experiment', description: 'Train a small language model, continue prompts, and explore new candidates with built-in or custom corpora.', Component: LanguageModelLab },
+  { path: '/quantum-wordle', title: 'Quantum Wordle', category: 'Word puzzle', description: 'Guess across three possible words and collapse an unstable reality when the clues conflict.', Component: QuantumWordle },
 ]
 const currentPath = () => window.location.pathname.replace(/\/+$/, '') || '/'
 
@@ -53,6 +55,7 @@ function App() {
               <h1 id="page-title">ASH Tools</h1>
               <p className="intro">A home for handy tools. More coming soon.</p>
             </div>
+
             <div className="result-display">
               <span>Tools</span>
               <strong>{tools.length}</strong>

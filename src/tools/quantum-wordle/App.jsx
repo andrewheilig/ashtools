@@ -1,616 +1,793 @@
 
-import { useState, useEffect, useMemo } from 'react';
-import './App.css';
-import { GUESSES, ANSWERS } from './words.js';
+import { useState, useEffect, useCallback } from "react";
+import { ANSWERS, GUESSES } from "./words.js";
+import "./App.css";
 
-const MAX_GUESSES = 10;
 const WORD_LENGTH = 5;
-const SECRET_COUNT = 3;
+const MAX_GUESSES = 6;
 
-const RANK = {
-  black: 0,
-  yellow: 1,
-  green: 2
+const normalizeWords = (words) =>
+  [...new Set(words.map(w => w.toLowerCase()))]
+    .filter(w => /^[a-z]{5}$/.test(w));
+
+const ALL_ANSWERS = normalizeWords(ANSWERS);
+const VALID_GUESSES = new Set([
+  ...normalizeWords(GUESSES),
+  ...ALL_ANSWERS
+]);
+
+const COLORS = {
+  green: "#538d4e",
+  yellow: "#b59f3b",
+  gray: "#787c7e",
+  empty: "#3a3a3c"
 };
 
-const VALID_GUESSES = new Set(
-  GUESSES.map(w => w.toLowerCase())
-);
-
-const POSSIBLE_ANSWERS = [
-  ...new Set(ANSWERS.map(w => w.toLowerCase()))
-].filter(w =>
-  /^[a-z]{5}$/.test(w) &&
-  VALID_GUESSES.has(w)
-);
-
-// ========================================
-// CHOOSE THREE SECRET WORDS
-// ========================================
-
-function chooseWords() {
-  const pool = [...POSSIBLE_ANSWERS];
-
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-
-  return pool.slice(0, SECRET_COUNT);
+function randomItem(array) {
+  return array[Math.floor(Math.random() * array.length)];
 }
 
-// ========================================
-// ORDINARY WORDLE GRADING
-// ========================================
+function randomSample(array, count) {
+  const result = [...array];
 
-// Correctly handles repeated letters.
+  for (let i = 0; i < count; i++) {
+    const j = i + Math.floor(Math.random() * (result.length - i));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
 
-function grade(guess, answer) {
-  const colors = Array(WORD_LENGTH).fill('black');
-  const counts = {};
+  return result.slice(0, count);
+}
 
-  // First find green letters.
+// Standard Wordle feedback, including repeated letters.
+function getFeedback(guess, answer) {
+  const feedback = Array(WORD_LENGTH).fill("gray");
+  const remaining = {};
+
+  // Green letters first.
   for (let i = 0; i < WORD_LENGTH; i++) {
     if (guess[i] === answer[i]) {
-      colors[i] = 'green';
+      feedback[i] = "green";
     } else {
-      counts[answer[i]] =
-        (counts[answer[i]] || 0) + 1;
+      remaining[answer[i]] = (remaining[answer[i]] || 0) + 1;
     }
   }
 
-  // Then find yellow letters.
+  // Yellow letters second.
   for (let i = 0; i < WORD_LENGTH; i++) {
-    if (colors[i] === 'green') continue;
+    if (feedback[i] === "green") continue;
 
     const letter = guess[i];
 
-    if ((counts[letter] || 0) > 0) {
-      colors[i] = 'yellow';
-      counts[letter]--;
+    if ((remaining[letter] || 0) > 0) {
+      feedback[i] = "yellow";
+      remaining[letter]--;
     }
   }
 
-  return colors;
+  return feedback;
 }
 
-// ========================================
-// QUANTUM WORDLE GRADING
-// ========================================
-
-// Green > Yellow > Black.
+// Determine the logical information in one observation.
 //
-// Each position uses the strongest color
-// from any remaining secret word.
-
-function quantumGrade(guess, secrets) {
-  const grades = secrets.map(answer =>
-    grade(guess, answer)
-  );
-
-  return Array.from(
-    { length: WORD_LENGTH },
-    (_, i) => grades.reduce(
-      (best, colors) =>
-        RANK[colors[i]] > RANK[best]
-          ? colors[i]
-          : best,
-      'black'
-    )
-  );
-}
-
-function equalColors(a, b) {
-  return a.every((color, i) => color === b[i]);
-}
-
-// ========================================
-// PARADOX DETECTION
-// ========================================
-
-// A paradox occurs when the combined
-// feedback is impossible for every
-// remaining secret word.
-
-function isParadox(guess, secrets) {
-  if (secrets.length <= 1) return false;
-
-  const combined = quantumGrade(guess, secrets);
-
-  return !secrets.some(answer =>
-    equalColors(
-      grade(guess, answer),
-      combined
-    )
-  );
-}
-
-// ========================================
-// COLLAPSE CHOICES
-// ========================================
-
-// Find positions whose combined color
-// is not shared by every possible word.
-//
-// IMPORTANT:
-// Prefer choices that preserve MORE words.
-//
-// This means:
-// 3 -> 2 is preferred over 3 -> 1.
-//
-// If 3 -> 2 is impossible, 3 -> 1
-// is still allowed.
-
-function getCollapseChoices(guess, secrets) {
-  const combined = quantumGrade(guess, secrets);
-  const choices = [];
+// Green: letter exists at this position.
+// Yellow: letter exists, but not at this position.
+// Gray: letter is not at this position. With duplicate
+// letters, gray may only indicate a limited letter count.
+function analyzeObservation(guess, feedback) {
+  const required = {};
+  const maximum = {};
+  const positions = {};
 
   for (let i = 0; i < WORD_LENGTH; i++) {
-    const survivors = secrets.filter(answer =>
-      grade(guess, answer)[i] === combined[i]
-    );
+    const letter = guess[i];
+    const color = feedback[i];
 
-    if (
-      survivors.length > 0 &&
-      survivors.length < secrets.length
-    ) {
-      choices.push({
-        position: i,
-        letter: guess[i],
-        color: combined[i],
-        survivors
-      });
+    if (!positions[letter]) {
+      positions[letter] = {
+        green: new Set(),
+        excluded: new Set()
+      };
+    }
+
+    if (color === "green") {
+      positions[letter].green.add(i);
+    } else {
+      positions[letter].excluded.add(i);
+    }
+
+    if (color !== "gray") {
+      required[letter] = (required[letter] || 0) + 1;
     }
   }
 
-  // Sort by number of survivors,
-  // largest first.
-  choices.sort((a, b) =>
-    b.survivors.length - a.survivors.length
-  );
+  const letters = new Set(guess);
 
-  // Give the player two choices.
-  return choices.slice(0, 2);
+  for (const letter of letters) {
+    const total = [...guess].filter(c => c === letter).length;
+    const positive = required[letter] || 0;
+
+    // If a letter is gray at least once, the number of
+    // occurrences in the answer is exactly the number
+    // of green/yellow occurrences in the guess.
+    if (positive < total) {
+      maximum[letter] = positive;
+    }
+  }
+
+  return { required, maximum, positions };
 }
 
-// ========================================
-// MAIN APP
-// ========================================
+// Check whether two observations are logically compatible.
+//
+// Enumerating candidate words is useful here because the
+// alphabet and word length are small, but using the whole
+// dictionary would incorrectly treat unusual valid combinations
+// as impossible. Instead, this uses letter and position
+// constraints, then verifies whether a five-character assignment
+// exists that satisfies both observations.
+function observationsConflict(a, b) {
+  const A = analyzeObservation(a.guess, a.feedback);
+  const B = analyzeObservation(b.guess, b.feedback);
 
-function App() {
-  const [secrets, setSecrets] = useState(chooseWords);
-  const [history, setHistory] = useState([]);
-  const [current, setCurrent] = useState('');
-  const [message, setMessage] = useState('');
-  const [showAnswers, setShowAnswers] = useState(false);
+  const letters = new Set([
+    ...Object.keys(A.required),
+    ...Object.keys(B.required),
+    ...Object.keys(A.maximum),
+    ...Object.keys(B.maximum),
+    ...Object.keys(A.positions),
+    ...Object.keys(B.positions)
+  ]);
 
-  // Most recent guess.
-  const latest = history.at(-1);
+  // Contradictory letter counts.
+  for (const letter of letters) {
+    const min = Math.max(
+      A.required[letter] || 0,
+      B.required[letter] || 0
+    );
 
-  // ======================================
-  // RECALCULATE ALL PREVIOUS COLORS
-  // ======================================
+    const max = Math.min(
+      A.maximum[letter] ?? 5,
+      B.maximum[letter] ?? 5
+    );
 
-  // These are calculated from secrets
-  // rather than permanently stored.
-  //
-  // Every time secrets changes, ALL
-  // previous rows change automatically.
+    if (min > max) return true;
+  }
 
-  const rows = useMemo(() =>
-    history.map(guess => ({
-      guess,
-      colors: quantumGrade(guess, secrets)
-    })),
-    [history, secrets]
-  );
+  // Explicit position contradictions.
+  for (const letter of letters) {
+    const ap = A.positions[letter];
+    const bp = B.positions[letter];
 
-  // ======================================
-  // PARADOX STATE
-  // ======================================
+    if (!ap || !bp) continue;
 
-  const paradox = Boolean(
-    latest &&
-    isParadox(latest, secrets)
-  );
+    for (const p of ap.green) {
+      if (bp.excluded.has(p)) return true;
+    }
 
-  const choices = paradox
-    ? getCollapseChoices(latest, secrets)
-    : [];
+    for (const p of bp.green) {
+      if (ap.excluded.has(p)) return true;
+    }
+  }
 
-  // ======================================
-  // KEYBOARD COLORS
-  // ======================================
+  // Two different green letters in one position.
+  for (let i = 0; i < WORD_LENGTH; i++) {
+    const ag = a.feedback[i] === "green" ? a.guess[i] : null;
+    const bg = b.feedback[i] === "green" ? b.guess[i] : null;
 
-  const keyColors = useMemo(() => {
-    const colors = {};
+    if (ag && bg && ag !== bg) return true;
+  }
 
-    for (const row of rows) {
-      for (let i = 0; i < WORD_LENGTH; i++) {
-        const letter = row.guess[i];
-        const color = row.colors[i];
+  // For all other cases, search for a possible abstract answer.
+  // Letters not mentioned in either guess are represented by "*".
+  const alphabet = [...letters, "*"];
+  const chosen = Array(WORD_LENGTH).fill(null);
+
+  function search(position) {
+    if (position === WORD_LENGTH) {
+      const counts = {};
+
+      for (const letter of chosen) {
+        counts[letter] = (counts[letter] || 0) + 1;
+      }
+
+      for (const letter of letters) {
+        const count = counts[letter] || 0;
+
+        if (count < (A.required[letter] || 0)) return false;
+        if (count < (B.required[letter] || 0)) return false;
+        if (count > (A.maximum[letter] ?? 5)) return false;
+        if (count > (B.maximum[letter] ?? 5)) return false;
+      }
+
+      // Check complete Wordle patterns using an arbitrary
+      // letter for all unmentioned positions.
+      const answer = chosen
+        .map(c => c === "*" ? "#" : c)
+        .join("");
+
+      return (
+        getFeedback(a.guess, answer).every(
+          (c, i) => c === a.feedback[i]
+        ) &&
+        getFeedback(b.guess, answer).every(
+          (c, i) => c === b.feedback[i]
+        )
+      );
+    }
+
+    for (const letter of alphabet) {
+      let allowed = true;
+
+      for (const obs of [a, b]) {
+        if (
+          obs.feedback[position] === "green" &&
+          obs.guess[position] !== letter
+        ) {
+          allowed = false;
+          break;
+        }
 
         if (
-          colors[letter] === undefined ||
-          RANK[color] > RANK[colors[letter]]
+          obs.feedback[position] !== "green" &&
+          obs.guess[position] === letter
         ) {
-          colors[letter] = color;
+          allowed = false;
+          break;
         }
+      }
+
+      if (!allowed) continue;
+
+      chosen[position] = letter;
+
+      if (search(position + 1)) return true;
+    }
+
+    return false;
+  }
+
+  return !search(0);
+}
+
+function createGame(count) {
+  return {
+    solutions: randomSample(ALL_ANSWERS, count),
+    observations: [],
+    guesses: [],
+    status: "playing",
+    paradoxes: 0,
+    eliminated: []
+  };
+}
+
+function Tile({ letter = "", color = null, invalid = false }) {
+  return (
+    <div
+      className="qw-tile"
+      style={{
+        width: 54,
+        height: 54,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        border: letter ? "2px solid #565758" : "2px solid #3a3a3c",
+        background: color ? COLORS[color] : "transparent",
+        color: "white",
+        fontSize: 28,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        opacity: invalid ? 0.36 : 1,
+        position: "relative",
+        boxSizing: "border-box"
+      }}
+    >
+      {letter}
+      {invalid && (
+        <span
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: "50%",
+            height: 3,
+            background: "#ff6161",
+            transform: "rotate(-16deg)"
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function GuessRow({ guess, feedback, invalid }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        gap: 5
+      }}
+    >
+      {Array.from({ length: WORD_LENGTH }, (_, i) => (
+        <Tile
+          key={i}
+          letter={guess?.[i] || ""}
+          color={feedback?.[i] || null}
+          invalid={invalid}
+        />
+      ))}
+    </div>
+  );
+}
+
+const KEY_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+
+export default function App() {
+  const [wordCount, setWordCount] = useState(
+    Math.min(100, ALL_ANSWERS.length)
+  );
+  const [game, setGame] = useState(() =>
+    createGame(Math.min(100, ALL_ANSWERS.length))
+  );
+  const [input, setInput] = useState("");
+  const [message, setMessage] = useState("");
+
+  const newGame = useCallback(() => {
+    const count = Math.max(
+      1,
+      Math.min(ALL_ANSWERS.length, Number(wordCount) || 1)
+    );
+
+    setWordCount(count);
+    setGame(createGame(count));
+    setInput("");
+    setMessage("");
+  }, [wordCount]);
+
+  const submitGuess = useCallback(() => {
+    if (game.status !== "playing") return;
+
+    const guess = input.toLowerCase();
+
+    if (guess.length !== WORD_LENGTH) {
+      setMessage("Not enough letters.");
+      return;
+    }
+
+    if (!VALID_GUESSES.has(guess)) {
+      setMessage("Not in word list.");
+      return;
+    }
+
+    if (game.guesses.some(row => row.guess === guess)) {
+      setMessage("You already guessed that word.");
+      return;
+    }
+
+    if (game.solutions.length === 0) {
+      setMessage("No possible answers remain.");
+      return;
+    }
+
+    // A guess that exactly names a remaining answer can win.
+    // Otherwise, feedback is sampled from a random answer.
+    const exactMatch = game.solutions.includes(guess);
+    const chosen = exactMatch
+      ? guess
+      : randomItem(game.solutions);
+
+    const feedback = getFeedback(guess, chosen);
+    const isWin = feedback.every(color => color === "green");
+
+    const newObservation = {
+      id: game.guesses.length,
+      guess,
+      feedback,
+      source: chosen,
+      invalid: false
+    };
+
+    let observations = game.observations.map(o => ({ ...o }));
+    let solutions = [...game.solutions];
+    let eliminated = [...game.eliminated];
+    let paradoxCount = game.paradoxes;
+    let paradoxMessage = "";
+
+    // Only a visible contradiction creates a paradox.
+    // Earlier observations are checked in chronological order.
+    if (!isWin) {
+      const conflicting = observations.filter(
+        old =>
+          !old.invalid &&
+          observationsConflict(old, newObservation)
+      );
+
+      if (conflicting.length > 0) {
+        const removedWords = new Set();
+
+        for (const old of conflicting) {
+          old.invalid = true;
+          removedWords.add(old.source);
+        }
+
+        // Eliminate the words responsible for the
+        // contradicted observations.
+        solutions = solutions.filter(
+          word => !removedWords.has(word)
+        );
+
+        eliminated.push(...removedWords);
+        paradoxCount += 1;
+
+        paradoxMessage =
+          `Quantum paradox! ${conflicting.length} earlier ` +
+          `observation(s) invalidated. ` +
+          `${removedWords.size} answer(s) eliminated.`;
+      }
+
+      // Prevent guessing the same answer again, while
+      // preserving the word sampled for the current feedback.
+      if (guess !== chosen) {
+        solutions = solutions.filter(word => word !== guess);
       }
     }
 
-    return colors;
-  }, [rows]);
+    observations.push(newObservation);
 
-  // ======================================
-  // WIN / LOSS
-  // ======================================
+    const guesses = [...game.guesses, newObservation];
 
-  const won = Boolean(
-    latest &&
-    secrets.length === 1 &&
-    latest === secrets[0] &&
-    !paradox
-  );
+    let status = "playing";
 
-  const lost = Boolean(
-    !won &&
-    !paradox &&
-    history.length >= MAX_GUESSES
-  );
-
-  const finished = won || lost;
-
-  // ======================================
-  // NEW GAME
-  // ======================================
-
-  function newGame() {
-    setSecrets(chooseWords());
-    setHistory([]);
-    setCurrent('');
-    setMessage('');
-    setShowAnswers(false);
-  }
-
-  // ======================================
-  // SUBMIT GUESS
-  // ======================================
-
-  function submit() {
-    if (finished || paradox) return;
-
-    if (current.length !== WORD_LENGTH) {
-      setMessage('Not enough letters.');
-      return;
+    if (isWin) {
+      status = "won";
+    } else if (guesses.length >= MAX_GUESSES) {
+      status = "lost";
+    } else if (solutions.length === 0) {
+      status = "lost";
     }
 
-    if (!VALID_GUESSES.has(current)) {
-      setMessage('Not in dictionary.');
-      return;
-    }
+    setGame({
+      solutions,
+      observations,
+      guesses,
+      status,
+      paradoxes: paradoxCount,
+      eliminated
+    });
 
-    setHistory(old => [...old, current]);
-    setCurrent('');
-    setMessage('');
-  }
+    setInput("");
 
-  // ======================================
-  // KEYBOARD INPUT
-  // ======================================
-
-  function handleKey(key) {
-    if (finished || paradox) return;
-
-    if (key === 'ENTER') {
-      submit();
-    } else if (key === 'BACKSPACE') {
-      setCurrent(w => w.slice(0, -1));
-    } else if (/^[A-Z]$/.test(key)) {
-      setCurrent(w =>
-        w.length < WORD_LENGTH
-          ? w + key.toLowerCase()
-          : w
+    if (isWin) {
+      setMessage("You solved Quantum Wordle!");
+    } else if (status === "lost") {
+      setMessage(
+        "Game over! " + (paradoxMessage || "No guesses remain.")
       );
+    } else if (paradoxMessage) {
+      setMessage(paradoxMessage);
+    } else {
+      setMessage("");
     }
-  }
+  }, [game, input]);
+
+  const handleKey = useCallback(
+    key => {
+      if (game.status !== "playing") return;
+
+      if (key === "ENTER") {
+        submitGuess();
+      } else if (key === "BACKSPACE") {
+        setInput(s => s.slice(0, -1));
+      } else if (/^[A-Z]$/.test(key)) {
+        setInput(s =>
+          s.length < WORD_LENGTH ? s + key.toLowerCase() : s
+        );
+      }
+    },
+    [game.status, submitGuess]
+  );
 
   useEffect(() => {
     function onKeyDown(event) {
       if (
-        event.ctrlKey ||
-        event.metaKey ||
-        event.altKey
+        event.target instanceof HTMLElement &&
+        ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)
       ) {
         return;
       }
 
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        handleKey('ENTER');
-      } else if (event.key === 'Backspace') {
-        event.preventDefault();
-        handleKey('BACKSPACE');
-      } else if (/^[a-zA-Z]$/.test(event.key)) {
+      if (event.key === "Enter") {
+        handleKey("ENTER");
+      } else if (event.key === "Backspace") {
+        handleKey("BACKSPACE");
+      } else if (/^[a-z]$/i.test(event.key)) {
         handleKey(event.key.toUpperCase());
       }
     }
 
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleKey]);
 
-    return () =>
-      window.removeEventListener('keydown', onKeyDown);
-  });
+  // Keyboard colors based on non-invalidated observations.
+  const keyboardColors = {};
 
-  // ======================================
-  // QUANTUM COLLAPSE
-  // ======================================
+  const rank = { gray: 1, yellow: 2, green: 3 };
 
-  function collapse(choice) {
-    // Eliminate every word that does not
-    // support the selected position's
-    // displayed color.
+  for (const row of game.guesses) {
+    if (row.invalid) continue;
 
-    setSecrets(choice.survivors);
+    for (let i = 0; i < WORD_LENGTH; i++) {
+      const letter = row.guess[i].toUpperCase();
+      const color = row.feedback[i];
 
-    setMessage(
-      `Reality collapsed! ` +
-      `${choice.survivors.length} possible ` +
-      `word${choice.survivors.length === 1 ? '' : 's'} ` +
-      `remain.`
-    );
-
-    // No explicit recoloring is necessary.
-    // rows and keyColors update automatically.
+      if (
+        !keyboardColors[letter] ||
+        rank[color] > rank[keyboardColors[letter]]
+      ) {
+        keyboardColors[letter] = color;
+      }
+    }
   }
 
-  // ======================================
-  // DRAW WORDLE TILES
-  // ======================================
+  const rows = [...game.guesses];
 
-  function renderTiles(word, colors = []) {
-    return Array.from(
-      { length: WORD_LENGTH },
-      (_, i) => (
-        <div
-          key={i}
-          className={
-            `tile ${colors[i] || (
-              word[i] ? 'filled' : ''
-            )}`
-          }
-        >
-          {word[i]?.toUpperCase() || ''}
-        </div>
-      )
-    );
+  if (game.status === "playing" && rows.length < MAX_GUESSES) {
+    rows.push({ guess: input, feedback: null, invalid: false });
   }
 
-  const keyboardRows = [
-    'QWERTYUIOP',
-    'ASDFGHJKL',
-    'ZXCVBNM'
-  ];
-
-  // ======================================
-  // RENDER
-  // ======================================
+  const remainingRows = MAX_GUESSES - rows.length;
 
   return (
-    <main className="app">
+    <div
+      className="quantum-wordle"
+      style={{
+        minHeight: "100vh",
+        background: "#121213",
+        color: "#ffffff",
+        padding: "24px 12px",
+        fontFamily: "Arial, sans-serif",
+        textAlign: "center"
+      }}
+    >
+      <h1 style={{ margin: "0 0 8px" }}>
+        Quantum Wordle
+      </h1>
 
-      <header>
-        <h1>QUANTUM WORDLE</h1>
+      <p style={{ color: "#aaa", marginBottom: 22 }}>
+        The answer is uncertain. The clues may contradict.
+      </p>
 
-        <p>
-          Three possible words.
-          One unstable reality.
-        </p>
-      </header>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+          gap: 12,
+          marginBottom: 18
+        }}
+      >
+        <label htmlFor="qw-word-count">
+          Starting possible words:
+        </label>
 
-      <div className="stats">
-        <span>
-          Possible words: {secrets.length}
-        </span>
-
-        <span>
-          Guesses: {history.length}/{MAX_GUESSES}
-        </span>
-      </div>
-
-      {/* GAME BOARD */}
-
-      <div className="board">
-        {Array.from(
-          { length: MAX_GUESSES },
-          (_, i) => {
-            const row = rows[i];
-
-            return (
-              <div
-                className="board-row"
-                key={i}
-              >
-                {row
-                  ? renderTiles(
-                      row.guess,
-                      row.colors
-                    )
-                  : i === history.length
-                    ? renderTiles(current)
-                    : renderTiles('')
-                }
-              </div>
-            );
-          }
-        )}
-      </div>
-
-      {/* QUANTUM PARADOX */}
-
-      {paradox && (
-        <div className="paradox-panel">
-
-          <h2>Quantum Paradox!</h2>
-
-          <p>
-            No remaining word matches all
-            of the displayed colors.
-          </p>
-
-          <p>
-            Choose a position whose color
-            must remain unchanged.
-          </p>
-
-          <div className="collapse-choices">
-            {choices.map(choice => (
-              <button
-                key={choice.position}
-                className="collapse-choice"
-                onClick={() => collapse(choice)}
-              >
-
-                <span
-                  className={
-                    `choice-letter ${choice.color}`
-                  }
-                >
-                  {choice.letter.toUpperCase()}
-                </span>
-
-                <span>
-                  Position {choice.position + 1}
-                </span>
-
-                <small>
-                  Keep {choice.color}
-                </small>
-
-                <small>
-                  {choice.survivors.length}
-                  {' '}word
-                  {choice.survivors.length === 1 ? '' : 's'}
-                  {' '}survive
-                </small>
-
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* WIN / LOSS */}
-
-      {won && (
-        <h2 className="success">
-          You won! Reality has collapsed!
-        </h2>
-      )}
-
-      {lost && (
-        <div className="game-result">
-          <h2>Game over!</h2>
-
-          <p>
-            Remaining answers:
-            {' '}
-            {secrets.join(', ').toUpperCase()}
-          </p>
-        </div>
-      )}
-
-      {/* STATUS MESSAGE */}
-
-      {message && (
-        <p className="message">
-          {message}
-        </p>
-      )}
-
-      {/* ON-SCREEN KEYBOARD */}
-
-      <div className="keyboard">
-        {keyboardRows.map(
-          (letters, rowIndex) => (
-            <div
-              className="keyboard-row"
-              key={letters}
-            >
-
-              {rowIndex === 2 && (
-                <button
-                  className="key wide"
-                  onClick={() => handleKey('ENTER')}
-                  disabled={finished || paradox}
-                >
-                  ENTER
-                </button>
-              )}
-
-              {[...letters].map(letter => (
-                <button
-                  key={letter}
-                  className={
-                    `key ${
-                      keyColors[
-                        letter.toLowerCase()
-                      ] || ''
-                    }`
-                  }
-                  onClick={() => handleKey(letter)}
-                  disabled={finished || paradox}
-                >
-                  {letter}
-                </button>
-              ))}
-
-              {rowIndex === 2 && (
-                <button
-                  className="key wide"
-                  onClick={() =>
-                    handleKey('BACKSPACE')
-                  }
-                  disabled={finished || paradox}
-                >
-                  ⌫
-                </button>
-              )}
-
-            </div>
-          )
-        )}
-      </div>
-
-      {/* CONTROLS */}
-
-      <div className="controls">
-
-        <button onClick={newGame}>
-          New Game
-        </button>
+        <input
+          id="qw-word-count"
+          type="number"
+          min="1"
+          max={ALL_ANSWERS.length}
+          value={wordCount}
+          onChange={e => setWordCount(e.target.value)}
+          style={{
+            width: 85,
+            padding: 7,
+            background: "#242426",
+            color: "white",
+            border: "1px solid #555",
+            borderRadius: 5
+          }}
+        />
 
         <button
-          onClick={() =>
-            setShowAnswers(v => !v)
-          }
+          onClick={newGame}
+          style={{
+            padding: "9px 16px",
+            background: "#538d4e",
+            color: "white",
+            border: 0,
+            borderRadius: 5,
+            cursor: "pointer",
+            fontWeight: "bold"
+          }}
         >
-          {showAnswers
-            ? 'Hide Answers'
-            : 'Show Answers'}
+          New Game
         </button>
-
       </div>
 
-      {showAnswers && (
-        <p className="revealed">
-          {secrets.join(', ').toUpperCase()}
-        </p>
-      )}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: 24,
+          marginBottom: 20,
+          flexWrap: "wrap"
+        }}
+      >
+        <div>
+          <strong>{game.solutions.length}</strong>
+          <div style={{ fontSize: 12, color: "#aaa" }}>
+            Possible words
+          </div>
+        </div>
 
-    </main>
+        <div>
+          <strong>{game.paradoxes}</strong>
+          <div style={{ fontSize: 12, color: "#aaa" }}>
+            Paradoxes
+          </div>
+        </div>
+
+        <div>
+          <strong>{game.guesses.length}/{MAX_GUESSES}</strong>
+          <div style={{ fontSize: 12, color: "#aaa" }}>
+            Guesses
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+          margin: "0 auto 22px",
+          width: "fit-content"
+        }}
+      >
+        {rows.map((row, i) => (
+          <GuessRow
+            key={i}
+            guess={row.guess}
+            feedback={row.feedback}
+            invalid={row.invalid}
+          />
+        ))}
+
+        {Array.from({ length: remainingRows }, (_, i) => (
+          <GuessRow key={`empty-${i}`} />
+        ))}
+      </div>
+
+      <div
+        style={{
+          minHeight: 42,
+          color:
+            game.status === "won"
+              ? "#7bc67b"
+              : message.includes("paradox")
+              ? "#ffcc66"
+              : "#ddd",
+          fontWeight: "bold",
+          maxWidth: 520,
+          margin: "0 auto"
+        }}
+      >
+        {message}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 6,
+          maxWidth: 520,
+          margin: "0 auto"
+        }}
+      >
+        {KEY_ROWS.map((row, i) => (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              gap: 4,
+              justifyContent: "center",
+              width: "100%"
+            }}
+          >
+            {i === 2 && (
+              <button
+                onClick={() => handleKey("ENTER")}
+                style={specialKeyStyle}
+              >
+                ENTER
+              </button>
+            )}
+
+            {[...row].map(letter => (
+              <button
+                key={letter}
+                onClick={() => handleKey(letter)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  maxWidth: 44,
+                  height: 52,
+                  border: 0,
+                  borderRadius: 4,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  color: "white",
+                  background: keyboardColors[letter]
+                    ? COLORS[keyboardColors[letter]]
+                    : "#818384"
+                }}
+              >
+                {letter}
+              </button>
+            ))}
+
+            {i === 2 && (
+              <button
+                onClick={() => handleKey("BACKSPACE")}
+                style={specialKeyStyle}
+              >
+                ⌫
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          maxWidth: 540,
+          margin: "28px auto",
+          padding: 15,
+          border: "1px solid #444",
+          borderRadius: 8,
+          textAlign: "left",
+          color: "#bbb",
+          lineHeight: 1.55,
+          fontSize: 14
+        }}
+      >
+        <strong style={{ color: "white" }}>
+          How Quantum Wordle works
+        </strong>
+
+        <p>
+          Each guess receives feedback from a randomly selected
+          possible answer. Unlike ordinary Wordle, the answer
+          supplying the next clue can change.
+        </p>
+
+        <p>
+          When new feedback visibly contradicts an earlier clue,
+          a quantum paradox occurs. The earlier clue is crossed
+          out, and the answer that produced it is eliminated.
+        </p>
+
+        <p style={{ marginBottom: 0 }}>
+          Green means correct position. Yellow means present
+          elsewhere. Gray means no additional occurrence of
+          that letter is present.
+        </p>
+      </div>
+    </div>
   );
 }
 
-export default App;
+const specialKeyStyle = {
+  padding: "0 8px",
+  minWidth: 48,
+  height: 52,
+  background: "#565758",
+  color: "white",
+  border: 0,
+  borderRadius: 4,
+  fontSize: 12,
+  fontWeight: "bold",
+  cursor: "pointer"
+};

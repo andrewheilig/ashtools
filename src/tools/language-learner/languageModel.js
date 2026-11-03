@@ -1,6 +1,12 @@
 import "./translations.js";
 
 export const MISSION_LENGTH = 30;
+export const MAX_MISSES = 10;
+export const MAX_ENEMIES = 7;
+
+export const BASE_SPEED = 24;
+export const SPAWN_DELAY = 3000;
+export const GAP = 12;
 
 export const REVIEW_DELAYS = [
   0,
@@ -17,33 +23,74 @@ export const LANGUAGE_INFO = {
     name: "Spanish",
     flag: "🇪🇸",
     speech: "es-US",
-    special: ["á", "é", "í", "ó", "ú", "ñ", "ü"],
-    ignoreAccents: true
+    ignoreAccents: true,
+    special: ["á", "é", "í", "ó", "ú", "ñ", "ü"]
   },
 
   french: {
     name: "French",
     flag: "🇫🇷",
     speech: "fr-FR",
-    special: ["à", "â", "ç", "é", "è", "ê", "ë", "î", "ï", "ô", "ù", "û", "ü", "œ"],
-    ignoreAccents: true
+    ignoreAccents: true,
+    special: [
+      "à",
+      "â",
+      "ç",
+      "é",
+      "è",
+      "ê",
+      "ë",
+      "î",
+      "ï",
+      "ô",
+      "ù",
+      "û",
+      "ü",
+      "œ"
+    ]
   },
 
   japanese: {
     name: "Japanese",
     flag: "🇯🇵",
     speech: "ja-JP",
-    special: [],
-    ignoreAccents: false
+    ignoreAccents: false,
+    special: []
   }
 };
 
-export function getCourse(language) {
-  const data =
-    window.TRANSLATIONS?.[language] ??
-    [];
 
-  return data.map((row, index) => ({
+export function normalize(text, language) {
+  let value = String(text ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (LANGUAGE_INFO[language]?.ignoreAccents) {
+    value = value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  return value;
+}
+
+
+export function randomFrom(array) {
+  if (!array.length) {
+    return null;
+  }
+
+  return array[
+    Math.floor(Math.random() * array.length)
+  ];
+}
+
+
+export function makeCourse(language) {
+  const rows =
+    window.TRANSLATIONS?.[language] ?? [];
+
+  return rows.map((row, index) => ({
     id: `${language}-${index}`,
 
     english: row[0],
@@ -64,44 +111,10 @@ export function getCourse(language) {
     listeningDue: 0,
 
     lastSeen: 0,
-
     fastCorrect: 0
   }));
 }
 
-export function normalize(text, language) {
-  let value =
-    String(text ?? "")
-      .trim()
-      .toLowerCase();
-
-  if (
-    LANGUAGE_INFO[language]
-      .ignoreAccents
-  ) {
-    value = value
-      .normalize("NFD")
-      .replace(
-        /[\u0300-\u036f]/g,
-        ""
-      );
-  }
-
-  return value;
-}
-
-export function randomItem(array) {
-  if (!array.length) {
-    return null;
-  }
-
-  return array[
-    Math.floor(
-      Math.random() *
-        array.length
-    )
-  ];
-}
 
 export function weakestMastery(word) {
   return Math.min(
@@ -111,13 +124,14 @@ export function weakestMastery(word) {
   );
 }
 
-export function statusFor(word) {
-  const mastery =
-    weakestMastery(word);
 
+export function wordStatus(word) {
   if (word.seen === 0) {
     return "NEW";
   }
+
+  const mastery =
+    weakestMastery(word);
 
   if (mastery <= 1) {
     return "learning";
@@ -130,23 +144,7 @@ export function statusFor(word) {
   return "learned";
 }
 
-export function loadSave(language) {
-  try {
-    const raw =
-      localStorage.getItem(
-        `languageDefender_${language}_v2`
-      );
-
-    if (!raw) {
-      return null;
-    }
-
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
 
 export function saveKey(language) {
-  return `languageDefender_${language}_v2`;
+  return `languageDefender_${language}_v3`;
 }

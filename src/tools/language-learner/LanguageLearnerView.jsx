@@ -1,44 +1,47 @@
 export default function LanguageLearnerView({
   LANGUAGE_INFO,
   MISSION_LENGTH,
-  accuracy,
-  activeWords,
-  answerPlacement,
-  answerQuestion,
+  answerRecognition,
   beginCourse,
   beginLanguage,
-  buildPlacement,
+  confetti,
   course,
-  currentQuestion,
   currentUnit,
+  enemies,
+  gameRef,
+  handleEnter,
+  handleTyping,
   inputRef,
   language,
   loadProgress,
   message,
   misses,
+  missionAccuracy,
   missionAnswered,
   missionCorrect,
   missionNewWords,
   missionNumber,
   newWordChance,
   nextMission,
-  placement,
-  placementIndex,
   recentAccuracy,
   saveProgress,
   score,
   screen,
+  setEnemies,
+  setRunning,
   setScreen,
   setTyped,
   speak,
-  statusFor,
+  stopConfetti,
   typed,
   unlockedCount,
-  weakestMastery
+  wordStatus
 }) {
-if (
-  screen === "language"
-) {
+// ==========================================================
+// LANGUAGE SELECT
+// ==========================================================
+
+if (screen === "language") {
   return (
     <div className="screen">
       <div className="menuBox">
@@ -54,23 +57,17 @@ if (
         {Object.entries(
           LANGUAGE_INFO
         ).map(
-          ([
-            key,
-            info
-          ]) => (
+          ([key, info]) => (
             <button
               key={key}
-              className="menuButton languageButton"
+              className="menuButton"
               onClick={() =>
                 beginLanguage(
                   key
                 )
               }
             >
-              <span className="languageFlag">
-                {info.flag}
-              </span>
-
+              {info.flag}{" "}
               {info.name}
             </button>
           )
@@ -81,13 +78,14 @@ if (
   );
 }
 
-if (
-  screen === "start"
-) {
+
+// ==========================================================
+// START SCREEN
+// ==========================================================
+
+if (screen === "start") {
   const info =
-    LANGUAGE_INFO[
-      language
-    ];
+    LANGUAGE_INFO[language];
 
   return (
     <div className="screen">
@@ -161,137 +159,36 @@ if (
         <button
           className="menuButton"
           onClick={
-            buildPlacement
+            loadProgress
           }
         >
-          Test my level
+          Continue Saved Game
         </button>
 
         <button
           className="menuButton"
-          onClick={
-            loadProgress
-          }
-        >
-          Continue saved game
-        </button>
-
-        <button
-          className="menuButton secondary"
           onClick={() =>
             setScreen(
               "language"
             )
           }
         >
-          Choose another language
+          Change Language
         </button>
 
-        <div className="courseSize">
+        <p>
           {course.length} course items
-        </div>
+        </p>
 
       </div>
     </div>
   );
 }
 
-if (
-  screen ===
-  "placement"
-) {
-  const question =
-    placement[
-      placementIndex
-    ];
 
-  return (
-    <div className="screen">
-      <div className="menuBox">
-
-        <h2>
-          Placement Test
-        </h2>
-
-        <p>
-          Translate into{" "}
-          {
-            LANGUAGE_INFO[
-              language
-            ].name
-          }.
-        </p>
-
-        <p>
-          Pronunciation is disabled during placement.
-        </p>
-
-        <div className="placementCounter">
-          {placementIndex + 1}
-          {" / "}
-          {placement.length}
-        </div>
-
-        <div className="placementPrompt">
-          {
-            question?.word
-              .english
-          }
-        </div>
-
-        <input
-          autoFocus
-          value={typed}
-          onChange={event =>
-            setTyped(
-              event.target
-                .value
-            )
-          }
-          onKeyDown={event => {
-            if (
-              event.key ===
-              "Enter"
-            ) {
-              answerPlacement(
-                typed
-              );
-
-              setTyped("");
-            }
-          }}
-        />
-
-        <div>
-          <button
-            onClick={() => {
-              answerPlacement(
-                typed
-              );
-
-              setTyped("");
-            }}
-          >
-            Submit
-          </button>
-
-          <button
-            onClick={() => {
-              answerPlacement(
-                "__SKIP__"
-              );
-
-              setTyped("");
-            }}
-          >
-            Skip
-          </button>
-        </div>
-
-      </div>
-    </div>
-  );
-}
+// ==========================================================
+// MISSION COMPLETE
+// ==========================================================
 
 if (
   screen ===
@@ -302,7 +199,8 @@ if (
     4
       ? 1
       : 0) +
-    (accuracy >= 0.75
+    (missionAccuracy >=
+    0.75
       ? 1
       : 0) +
     (misses <= 5
@@ -310,12 +208,34 @@ if (
       : 0);
 
   return (
-    <div className="screen missionComplete">
-      <div className="resultCard">
+    <div className="missionOverlay">
 
-        <div className="confettiText">
-          🎉
-        </div>
+      <div className="confettiLayer">
+        {confetti.map(
+          piece => (
+            <div
+              key={piece.id}
+              className="confettiPiece"
+              style={{
+                left:
+                  `${piece.left}%`,
+                width:
+                  piece.size,
+                height:
+                  piece.size,
+                animationDelay:
+                  `${piece.delay}s`,
+                animationDuration:
+                  `${piece.duration}s`,
+                "--rotation":
+                  `${piece.rotate}deg`
+              }}
+            />
+          )
+        )}
+      </div>
+
+      <div className="resultCard">
 
         <h1>
           Mission Complete!
@@ -337,7 +257,8 @@ if (
 
         <p>
           {Math.round(
-            accuracy * 100
+            missionAccuracy *
+              100
           )}
           % accuracy
         </p>
@@ -346,10 +267,10 @@ if (
           {
             missionNewWords.length
           }{" "}
-          new words encountered
+          new words
         </p>
 
-        <p className="saved">
+        <p>
           ✓ Progress saved
         </p>
 
@@ -362,11 +283,12 @@ if (
         </button>
 
         <button
-          onClick={() =>
-            setScreen("start")
-          }
+          onClick={() => {
+            stopConfetti();
+            setScreen("start");
+          }}
         >
-          Main Menu
+          Menu
         </button>
 
       </div>
@@ -374,18 +296,13 @@ if (
   );
 }
 
-const info =
-  LANGUAGE_INFO[
-    language
-  ];
 
-const learned =
-  activeWords.filter(
-    word =>
-      weakestMastery(
-        word
-      ) >= 4
-  ).length;
+// ==========================================================
+// DEFENDER GAME
+// ==========================================================
+
+const info =
+  LANGUAGE_INFO[language];
 
 return (
   <div className="app">
@@ -395,19 +312,19 @@ return (
       {info.name} Defender
     </h1>
 
-    <div className="stats">
+    <div id="stats">
       Score: {score}
       {" | "}
       Missed: {misses}
       {" | "}
-      Learned: {learned}
-      {" | "}
       Unit: {currentUnit}
     </div>
+
 
     <div className="missionHud">
 
       <div className="missionTop">
+
         <strong>
           Mission{" "}
           {missionNumber}
@@ -418,7 +335,9 @@ return (
           {" / "}
           {MISSION_LENGTH}
         </span>
+
       </div>
+
 
       <div className="missionBar">
         <div
@@ -434,7 +353,9 @@ return (
         />
       </div>
 
+
       <div className="missionGoals">
+
         <span>
           {
             missionNewWords.length >=
@@ -447,7 +368,8 @@ return (
 
         <span>
           {
-            accuracy >= 0.75
+            missionAccuracy >=
+            0.75
               ? "✓"
               : "○"
           }{" "}
@@ -455,166 +377,185 @@ return (
         </span>
 
         <span>
-          New-word chance:{" "}
+          New chance:{" "}
           {Math.round(
             newWordChance *
               100
           )}
           %
         </span>
+
       </div>
 
     </div>
 
-    <div className="game">
 
-      {currentQuestion && (
-        <div
-          className={
-            "questionCard " +
-            statusFor(
-              currentQuestion
-                .word
-            )
-          }
-        >
+    <div
+      id="game"
+      ref={gameRef}
+      onClick={() =>
+        inputRef.current?.focus()
+      }
+    >
 
-          <div className="mode">
-            {
-              currentQuestion.mode
+      {enemies.map(enemy => {
+        const word =
+          course.find(
+            item =>
+              item.id ===
+              enemy.wordId
+          );
+
+        if (!word) {
+          return null;
+        }
+
+        return (
+          <div
+            key={enemy.id}
+            className={
+              "enemy " +
+              wordStatus(word)
             }
-          </div>
+            style={{
+              left:
+                enemy.x,
+              top:
+                enemy.y,
+              width:
+                enemy.width
+            }}
+          >
 
-          <div className="prompt">
-            {
-              currentQuestion.prompt
-            }
-          </div>
-
-          {currentQuestion.mode ===
-            "listening" && (
-            <button
-              className="speaker"
-              onClick={() =>
-                speak(
-                  currentQuestion
-                    .word
-                    .target
-                )
+            <div className="enemyPrompt">
+              {
+                enemy.question.prompt
               }
-            >
-              🔊 Play again
-            </button>
-          )}
-
-          {currentQuestion.mode !==
-            "listening" && (
-            <button
-              className="speaker"
-              onClick={() =>
-                speak(
-                  currentQuestion
-                    .word
-                    .target
-                )
-              }
-            >
-              🔊
-            </button>
-          )}
-
-          {currentQuestion.mode ===
-          "recognition" ? (
-            <div className="choices">
-
-              {currentQuestion
-                .choices
-                .map(choice => (
-                  <button
-                    key={choice}
-                    onClick={() =>
-                      answerQuestion(
-                        choice
-                      )
-                    }
-                  >
-                    {choice}
-                  </button>
-                ))}
-
             </div>
-          ) : (
-            <>
 
-              <input
-                ref={inputRef}
-                value={typed}
-                autoComplete="off"
-                placeholder={
-                  currentQuestion.mode ===
-                  "typing"
-                    ? `Type the ${info.name} answer`
-                    : "Type the English meaning"
-                }
-                onChange={event =>
-                  setTyped(
-                    event.target
-                      .value
-                  )
-                }
-                onKeyDown={event => {
-                  if (
-                    event.key ===
-                    "Enter"
-                  ) {
-                    answerQuestion(
-                      typed
-                    );
+            <div className="modeBadge">
+              {
+                enemy.question.mode ===
+                "typing"
+                  ? "TYPE"
+                  : enemy.question.mode ===
+                    "recognition"
+                  ? "RECOGNIZE"
+                  : "LISTEN"
+              }
+            </div>
 
-                    setTyped("");
-                  }
+
+            {enemy.question.mode ===
+              "listening" && (
+              <button
+                className="speaker"
+                onClick={event => {
+                  event.stopPropagation();
+
+                  speak(
+                    enemy.question
+                      .audio
+                  );
                 }}
-              />
+              >
+                🔊
+              </button>
+            )}
 
-              {info.special.length >
-                0 && (
-                <div className="keyboard">
 
-                  {info.special.map(
-                    character => (
-                      <button
-                        key={
-                          character
-                        }
-                        onClick={() => {
-                          setTyped(
-                            old =>
-                              old +
-                              character
-                          );
+            {enemy.question.mode ===
+              "recognition" && (
+              <div className="recognitionChoices">
 
-                          inputRef.current?.focus();
-                        }}
-                      >
-                        {character}
-                      </button>
-                    )
-                  )}
+                {enemy.question
+                  .choices
+                  .map(choice => (
+                    <button
+                      key={choice}
+                      onClick={event => {
+                        event.stopPropagation();
 
-                </div>
-              )}
+                        answerRecognition(
+                          enemy,
+                          choice
+                        );
+                      }}
+                    >
+                      {choice}
+                    </button>
+                  ))}
 
-            </>
-          )}
+              </div>
+            )}
 
-        </div>
-      )}
+          </div>
+        );
+      })}
 
     </div>
 
-    <div className="message">
+
+    <input
+      ref={inputRef}
+      id="answer"
+      value={typed}
+      autoComplete="off"
+      placeholder={
+        `Type the ${info.name} answer`
+      }
+      onChange={event => {
+        const value =
+          event.target.value;
+
+        setTyped(value);
+        handleTyping(value);
+      }}
+      onKeyDown={event => {
+        if (
+          event.key ===
+          "Enter"
+        ) {
+          handleEnter();
+        }
+      }}
+    />
+
+
+    {info.special.length >
+      0 && (
+      <div id="keyboard">
+
+        {info.special.map(
+          character => (
+            <button
+              key={
+                character
+              }
+              onClick={() => {
+                const value =
+                  typed +
+                  character;
+
+                setTyped(value);
+                handleTyping(value);
+
+                inputRef.current?.focus();
+              }}
+            >
+              {character}
+            </button>
+          )
+        )}
+
+      </div>
+    )}
+
+
+    <div id="message">
       {message}
     </div>
+
 
     <div className="adaptiveStats">
       Recent accuracy:{" "}
@@ -637,6 +578,7 @@ return (
       {course.length}
     </div>
 
+
     <div className="bottomButtons">
 
       <button
@@ -648,9 +590,11 @@ return (
       </button>
 
       <button
-        onClick={() =>
-          setScreen("start")
-        }
+        onClick={() => {
+          setRunning(false);
+          setEnemies([]);
+          setScreen("start");
+        }}
       >
         Menu
       </button>

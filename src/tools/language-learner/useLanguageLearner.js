@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BASE_SPEED,
+  GAP,
   LANGUAGE_INFO,
+  MAX_ENEMIES,
+  MAX_MISSES,
   MISSION_LENGTH,
   REVIEW_DELAYS,
-  getCourse,
-  loadSave,
+  SPAWN_DELAY,
+  makeCourse,
   normalize,
-  randomItem,
+  randomFrom,
   saveKey,
-  statusFor,
-  weakestMastery
+  weakestMastery,
+  wordStatus
 } from "./languageModel.js";
 
 export default function useLanguageLearner() {
@@ -25,6 +29,21 @@ export default function useLanguageLearner() {
   const [unlockedCount, setUnlockedCount] =
     useState(12);
 
+  const [enemies, setEnemies] =
+    useState([]);
+
+  const enemiesRef =
+    useRef([]);
+
+  const [typed, setTyped] =
+    useState("");
+
+  const [score, setScore] =
+    useState(0);
+
+  const [misses, setMisses] =
+    useState(0);
+
   const [missionNumber, setMissionNumber] =
     useState(1);
 
@@ -37,52 +56,54 @@ export default function useLanguageLearner() {
   const [missionNewWords, setMissionNewWords] =
     useState([]);
 
-  const [score, setScore] =
-    useState(0);
-
-  const [misses, setMisses] =
-    useState(0);
-
   const [recentResults, setRecentResults] =
     useState([]);
-
-  const [currentQuestion, setCurrentQuestion] =
-    useState(null);
-
-  const [typed, setTyped] =
-    useState("");
 
   const [message, setMessage] =
     useState("");
 
-  const [placement, setPlacement] =
+  const [running, setRunning] =
+    useState(false);
+
+  const [confetti, setConfetti] =
     useState([]);
 
-  const [placementIndex, setPlacementIndex] =
-    useState(0);
-
-  const [placementResults, setPlacementResults] =
-    useState([]);
+  const gameRef =
+    useRef(null);
 
   const inputRef =
     useRef(null);
 
-  const questionStart =
-    useRef(Date.now());
+  const animationRef =
+    useRef(null);
 
-  const missionComplete =
-    missionAnswered >=
-    MISSION_LENGTH;
+  const lastTimeRef =
+    useRef(performance.now());
+
+  const lastSpawnRef =
+    useRef(0);
+
+  const enemyIdRef =
+    useRef(1);
+
+
+  useEffect(() => {
+    enemiesRef.current =
+      enemies;
+  }, [enemies]);
+
 
   const activeWords =
-    useMemo(
-      () =>
-        course.slice(
-          0,
-          unlockedCount
-        ),
-      [course, unlockedCount]
-    );
+    useMemo(() => {
+      return course.slice(
+        0,
+        unlockedCount
+      );
+    }, [
+      course,
+      unlockedCount
+    ]);
+
 
   const currentUnit =
     useMemo(() => {
@@ -96,66 +117,124 @@ export default function useLanguageLearner() {
       );
     }, [activeWords]);
 
-  const accuracy =
-    missionAnswered
-      ? missionCorrect /
-        missionAnswered
-      : 1;
 
   const recentAccuracy =
-    recentResults.length
-      ? recentResults.filter(
+    useMemo(() => {
+      if (!recentResults.length) {
+        return 1;
+      }
+
+      return (
+        recentResults.filter(
           result =>
             result.correct
         ).length /
         recentResults.length
-      : 1;
+      );
+    }, [recentResults]);
+
 
   const newWordChance =
     useMemo(() => {
-      if (
-        recentAccuracy >
-        0.9
-      ) {
+      if (recentAccuracy > 0.9) {
         return 0.65;
       }
 
-      if (
-        recentAccuracy >
-        0.75
-      ) {
+      if (recentAccuracy > 0.75) {
         return 0.45;
       }
 
-      if (
-        recentAccuracy >
-        0.55
-      ) {
+      if (recentAccuracy > 0.55) {
         return 0.25;
       }
 
       return 0.1;
     }, [recentAccuracy]);
 
-  function updateWord(
-    id,
-    updater
-  ) {
+
+  const missionAccuracy =
+    missionAnswered
+      ? missionCorrect /
+        missionAnswered
+      : 1;
+
+
+  function updateWord(id, fn) {
     setCourse(old =>
       old.map(word =>
         word.id === id
-          ? updater(word)
+          ? fn(word)
           : word
       )
     );
   }
+
+
+  function speak(text) {
+    if (
+      !language ||
+      !window.speechSynthesis
+    ) {
+      return;
+    }
+
+    const info =
+      LANGUAGE_INFO[language];
+
+    const utterance =
+      new SpeechSynthesisUtterance(
+        text
+      );
+
+    utterance.lang =
+      info.speech;
+
+    utterance.rate =
+      language === "japanese"
+        ? 0.82
+        : 0.86;
+
+    const voices =
+      speechSynthesis.getVoices();
+
+    const prefix =
+      info.speech
+        .slice(0, 2)
+        .toLowerCase();
+
+    const preferred =
+      voices.find(
+        voice =>
+          voice.lang
+            .toLowerCase()
+            .startsWith(prefix) &&
+          !voice.localService
+      ) ||
+      voices.find(
+        voice =>
+          voice.lang
+            .toLowerCase()
+            .startsWith(prefix)
+      );
+
+    if (preferred) {
+      utterance.voice =
+        preferred;
+    }
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(
+      utterance
+    );
+  }
+
 
   function chooseMode(word) {
     if (word.seen < 2) {
       return "typing";
     }
 
-    const choices = [
+    const options = [
       {
         mode: "typing",
         mastery:
@@ -173,23 +252,21 @@ export default function useLanguageLearner() {
       }
     ];
 
-    choices.sort(
+    options.sort(
       (a, b) =>
         a.mastery -
         b.mastery
     );
 
-    if (
-      Math.random() <
-      0.65
-    ) {
-      return choices[0].mode;
+    if (Math.random() < 0.65) {
+      return options[0].mode;
     }
 
-    return randomItem(
-      choices
+    return randomFrom(
+      options
     ).mode;
   }
+
 
   function chooseWord() {
     const active =
@@ -202,19 +279,22 @@ export default function useLanguageLearner() {
       return null;
     }
 
-    const newWord =
+    const nextNew =
       active.find(
         word =>
           word.seen === 0
       );
 
     if (
-      newWord &&
+      nextNew &&
       Math.random() <
         newWordChance
     ) {
-      return newWord;
+      return nextNew;
     }
+
+    const now =
+      Date.now();
 
     const due =
       active.filter(word => {
@@ -223,32 +303,29 @@ export default function useLanguageLearner() {
         }
 
         return (
-          word.typingDue <=
-            Date.now() ||
-          word.recognitionDue <=
-            Date.now() ||
-          word.listeningDue <=
-            Date.now()
+          word.typingDue <= now ||
+          word.recognitionDue <= now ||
+          word.listeningDue <= now
         );
       });
 
     if (due.length) {
-      const sorted =
+      const weak =
         [...due].sort(
           (a, b) =>
             weakestMastery(a) -
             weakestMastery(b)
         );
 
-      return sorted[
-        Math.floor(
-          Math.random() *
-            Math.min(
-              6,
-              sorted.length
-            )
+      return randomFrom(
+        weak.slice(
+          0,
+          Math.min(
+            8,
+            weak.length
+          )
         )
-      ];
+      );
     }
 
     const seen =
@@ -258,51 +335,193 @@ export default function useLanguageLearner() {
       );
 
     return (
-      randomItem(seen) ||
-      newWord ||
-      randomItem(active)
+      randomFrom(seen) ||
+      nextNew ||
+      randomFrom(active)
     );
   }
 
-  function buildRecognitionChoices(
-    word
-  ) {
-    const others =
-      activeWords.filter(
-        candidate =>
-          candidate.id !==
-          word.id
-      );
 
-    const options = [
+  function recognitionChoices(word) {
+    const choices = [
       word.english
     ];
 
+    const others =
+      activeWords.filter(
+        other =>
+          other.id !==
+          word.id
+      );
+
     while (
-      options.length < 4 &&
+      choices.length < 4 &&
       others.length
     ) {
       const candidate =
-        randomItem(others);
+        randomFrom(others);
 
       if (
-        !options.includes(
+        !choices.includes(
           candidate.english
         )
       ) {
-        options.push(
+        choices.push(
           candidate.english
         );
       }
     }
 
-    return options.sort(
+    return choices.sort(
       () =>
         Math.random() - 0.5
     );
   }
 
-  function makeQuestion() {
+
+  function makeEnemyQuestion(word) {
+    const mode =
+      chooseMode(word);
+
+    if (mode === "typing") {
+      return {
+        mode,
+        prompt: word.english,
+        answer: word.target
+      };
+    }
+
+    if (mode === "recognition") {
+      return {
+        mode,
+        prompt: word.target,
+        answer: word.english,
+        choices:
+          recognitionChoices(word)
+      };
+    }
+
+    return {
+      mode,
+      prompt: "🔊",
+      answer: word.english,
+      audio: word.target
+    };
+  }
+
+
+  function rectanglesOverlap(
+    a,
+    b
+  ) {
+    return !(
+      a.x + a.width + GAP <
+        b.x ||
+      b.x + b.width + GAP <
+        a.x ||
+      a.y + a.height + GAP <
+        b.y ||
+      b.y + b.height + GAP <
+        a.y
+    );
+  }
+
+
+  function chooseSpawnY(
+    width,
+    height
+  ) {
+    const game =
+      gameRef.current;
+
+    if (!game) {
+      return 30;
+    }
+
+    const gameHeight =
+      game.clientHeight;
+
+    const maxY =
+      Math.max(
+        20,
+        gameHeight -
+          height -
+          20
+      );
+
+    for (
+      let attempt = 0;
+      attempt < 80;
+      attempt++
+    ) {
+      const y =
+        20 +
+        Math.random() *
+          (maxY - 20);
+
+      const candidate = {
+        x:
+          game.clientWidth +
+          10,
+        y,
+        width,
+        height
+      };
+
+      let blocked =
+        false;
+
+      for (
+        const enemy of
+        enemiesRef.current
+      ) {
+        const other = {
+          x: enemy.x,
+          y: enemy.y,
+          width:
+            enemy.width ??
+            220,
+          height:
+            enemy.height ??
+            90
+        };
+
+        if (
+          rectanglesOverlap(
+            candidate,
+            other
+          )
+        ) {
+          blocked = true;
+          break;
+        }
+      }
+
+      if (!blocked) {
+        return y;
+      }
+    }
+
+    return null;
+  }
+
+
+  function spawnEnemy() {
+    if (
+      !running ||
+      enemiesRef.current.length >=
+        MAX_ENEMIES
+    ) {
+      return;
+    }
+
+    const game =
+      gameRef.current;
+
+    if (!game) {
+      return;
+    }
+
     const word =
       chooseWord();
 
@@ -310,61 +529,72 @@ export default function useLanguageLearner() {
       return;
     }
 
-    const mode =
-      chooseMode(word);
+    const question =
+      makeEnemyQuestion(word);
 
-    let question;
+    const width =
+      Math.min(
+        380,
+        Math.max(
+          170,
+          question.prompt.length *
+            11 +
+            60
+        )
+      );
 
-    if (
-      mode === "typing"
-    ) {
-      question = {
-        word,
-        mode,
-        prompt:
-          word.english,
-        answer:
-          word.target
-      };
-    }
-
-    else if (
-      mode ===
+    const height =
+      question.mode ===
       "recognition"
-    ) {
-      question = {
-        word,
-        mode,
-        prompt:
-          word.target,
-        answer:
-          word.english,
-        choices:
-          buildRecognitionChoices(
-            word
-          )
-      };
+        ? 155
+        : 90;
+
+    const y =
+      chooseSpawnY(
+        width,
+        height
+      );
+
+    if (y === null) {
+      return;
     }
 
-    else {
-      question = {
-        word,
-        mode,
-        prompt:
-          "What did you hear?",
-        answer:
-          word.english
-      };
-    }
+    const wasNew =
+      word.seen === 0;
 
-    setCurrentQuestion(
-      question
-    );
+    const enemy = {
+      id:
+        enemyIdRef.current++,
 
-    setTyped("");
+      wordId:
+        word.id,
 
-    questionStart.current =
-      Date.now();
+      question,
+
+      x:
+        game.clientWidth +
+        10,
+
+      y,
+
+      width,
+      height,
+
+      speed:
+        BASE_SPEED +
+        weakestMastery(word) *
+          2,
+
+      spawnedAt:
+        performance.now(),
+
+      wasNew
+    };
+
+    setEnemies(old => [
+      ...old,
+      enemy
+    ]);
 
     updateWord(
       word.id,
@@ -378,25 +608,35 @@ export default function useLanguageLearner() {
     );
 
     if (
-      mode === "listening"
+      wasNew &&
+      question.mode ===
+        "typing"
     ) {
       setTimeout(
         () =>
           speak(
             word.target
           ),
-        100
+        120
       );
     }
 
-    setTimeout(
-      () =>
-        inputRef.current?.focus(),
-      0
-    );
+    if (
+      question.mode ===
+      "listening"
+    ) {
+      setTimeout(
+        () =>
+          speak(
+            question.audio
+          ),
+        150
+      );
+    }
   }
 
-  function scheduleMastery(
+
+  function masteryResult(
     word,
     mode,
     correct,
@@ -412,18 +652,15 @@ export default function useLanguageLearner() {
       word[masteryKey] ?? 0;
 
     if (correct) {
-      const firstExposure =
-        word.seen <= 1;
-
       if (
-        firstExposure &&
+        word.seen <= 1 &&
         mode === "typing" &&
         responseTime < 1800
       ) {
         mastery =
           Math.max(
-            mastery,
-            4
+            4,
+            mastery
           );
       }
 
@@ -475,21 +712,26 @@ export default function useLanguageLearner() {
     };
   }
 
-  function recordResult(
-    correct
-  ) {
-    setRecentResults(old => {
-      const next = [
-        ...old,
-        {
-          correct,
-          time: Date.now()
-        }
-      ];
 
-      return next.slice(-20);
-    });
+  function removeEnemy(id) {
+    setEnemies(old =>
+      old.filter(
+        enemy =>
+          enemy.id !== id
+      )
+    );
   }
+
+
+  function recordRecent(correct) {
+    setRecentResults(old => [
+      ...old.slice(-19),
+      {
+        correct
+      }
+    ]);
+  }
+
 
   function maybeUnlock() {
     const recent =
@@ -518,491 +760,550 @@ export default function useLanguageLearner() {
         recent.length >=
       0.65
     ) {
-      setUnlockedCount(
-        old =>
-          Math.min(
-            course.length,
-            old + 8
-          )
+      setUnlockedCount(old =>
+        Math.min(
+          course.length,
+          old + 8
+        )
       );
     }
   }
 
-  function answerQuestion(
-    value
+
+  function defeatEnemy(
+    enemy,
+    _submittedAnswer
   ) {
-    if (!currentQuestion) {
+    const word =
+      course.find(
+        item =>
+          item.id ===
+          enemy.wordId
+      );
+
+    if (!word) {
       return;
     }
 
-    const elapsed =
-      Date.now() -
-      questionStart.current;
+    const responseTime =
+      performance.now() -
+      enemy.spawnedAt;
 
-    const expected =
-      normalize(
-        currentQuestion.answer,
-        language
+    updateWord(
+      word.id,
+      old =>
+        masteryResult(
+          old,
+          enemy.question.mode,
+          true,
+          responseTime
+        )
+    );
+
+    removeEnemy(enemy.id);
+
+    setScore(old =>
+      old + 1
+    );
+
+    setMissionCorrect(old =>
+      old + 1
+    );
+
+    setMissionAnswered(old =>
+      old + 1
+    );
+
+    recordRecent(true);
+
+    if (
+      enemy.wasNew &&
+      !missionNewWords.includes(
+        word.id
+      )
+    ) {
+      setMissionNewWords(old => [
+        ...old,
+        word.id
+      ]);
+    }
+
+    setMessage(
+      `✓ ${word.english} = ${word.target}`
+    );
+
+    maybeUnlock();
+  }
+
+
+  function missEnemy(
+    enemy,
+    _typedAnswer = ""
+  ) {
+    const word =
+      course.find(
+        item =>
+          item.id ===
+          enemy.wordId
       );
 
-    const actual =
+    if (!word) {
+      return;
+    }
+
+    const responseTime =
+      performance.now() -
+      enemy.spawnedAt;
+
+    updateWord(
+      word.id,
+      old =>
+        masteryResult(
+          old,
+          enemy.question.mode,
+          false,
+          responseTime
+        )
+    );
+
+    removeEnemy(enemy.id);
+
+    setMisses(old =>
+      old + 1
+    );
+
+    setMissionAnswered(old =>
+      old + 1
+    );
+
+    recordRecent(false);
+
+    setMessage(
+      `✗ ${word.english} = ${word.target}`
+    );
+  }
+
+
+  function handleTyping(value) {
+    const normalized =
       normalize(
         value,
         language
       );
 
-    const correct =
-      expected === actual;
+    if (!normalized) {
+      return;
+    }
 
-    const word =
-      currentQuestion.word;
+    const matching =
+      enemiesRef.current
+        .filter(enemy => {
+          if (
+            enemy.question.mode ===
+            "recognition"
+          ) {
+            return false;
+          }
 
-    updateWord(
-      word.id,
-      old =>
-        scheduleMastery(
-          old,
-          currentQuestion.mode,
-          correct,
-          elapsed
-        )
-    );
-
-    recordResult(correct);
-
-    setMissionAnswered(
-      old => old + 1
-    );
-
-    if (correct) {
-      setScore(
-        old => old + 1
-      );
-
-      setMissionCorrect(
-        old => old + 1
-      );
-
-      if (
-        word.seen <= 1 &&
-        !missionNewWords.includes(
-          word.id
-        )
-      ) {
-        setMissionNewWords(
-          old => [
-            ...old,
-            word.id
-          ]
+          return (
+            normalize(
+              enemy.question
+                .answer,
+              language
+            ) === normalized
+          );
+        })
+        .sort(
+          (a, b) =>
+            a.x - b.x
         );
-      }
 
-      setMessage(
-        `✓ ${word.target}`
+    if (matching.length) {
+      const enemy =
+        matching[0];
+
+      setTyped("");
+
+      defeatEnemy(
+        enemy,
+        value
       );
     }
-
-    else {
-      setMisses(
-        old => old + 1
-      );
-
-      setMessage(
-        `✗ ${word.english} = ${word.target}`
-      );
-    }
-
-    maybeUnlock();
-
-    setTimeout(() => {
-      if (
-        missionAnswered + 1 <
-        MISSION_LENGTH
-      ) {
-        makeQuestion();
-      }
-    }, 400);
   }
 
-  function speak(text) {
+
+  function handleEnter() {
     if (
-      !language ||
-      !window.speechSynthesis
+      !enemiesRef.current.length
     ) {
       return;
     }
 
-    const config =
-      LANGUAGE_INFO[
-        language
-      ];
+    const closest =
+      [...enemiesRef.current]
+        .sort(
+          (a, b) =>
+            a.x - b.x
+        )[0];
 
-    const utterance =
-      new SpeechSynthesisUtterance(
-        text
-      );
-
-    utterance.lang =
-      config.speech;
-
-    utterance.rate =
-      language === "japanese"
-        ? 0.82
-        : 0.86;
-
-    const voices =
-      speechSynthesis.getVoices();
-
-    const best =
-      voices.find(
-        voice =>
-          voice.lang
-            .toLowerCase()
-            .startsWith(
-              config.speech
-                .slice(0, 2)
-                .toLowerCase()
-            ) &&
-          !voice.localService
-      ) ||
-      voices.find(
-        voice =>
-          voice.lang
-            .toLowerCase()
-            .startsWith(
-              config.speech
-                .slice(0, 2)
-                .toLowerCase()
-            )
-      );
-
-    if (best) {
-      utterance.voice =
-        best;
+    if (
+      closest.question.mode ===
+      "recognition"
+    ) {
+      return;
     }
 
-    speechSynthesis.cancel();
+    setTyped("");
 
-    speechSynthesis.speak(
-      utterance
+    if (
+      closest.question.mode ===
+      "typing"
+    ) {
+      speak(
+        course.find(
+          word =>
+            word.id ===
+            closest.wordId
+        )?.target ?? ""
+      );
+    }
+
+    missEnemy(
+      closest,
+      typed
     );
   }
 
-  function beginLanguage(
-    lang
+
+  function answerRecognition(
+    enemy,
+    choice
   ) {
-    setLanguage(lang);
+    const correct =
+      normalize(
+        choice,
+        language
+      ) ===
+      normalize(
+        enemy.question.answer,
+        language
+      );
 
-    const loaded =
-      getCourse(lang);
+    if (correct) {
+      defeatEnemy(
+        enemy,
+        choice
+      );
+    }
 
-    setCourse(loaded);
-
-    setUnlockedCount(12);
-
-    setMissionNumber(1);
-
-    setScreen("start");
+    else {
+      missEnemy(
+        enemy,
+        choice
+      );
+    }
   }
 
-  function beginCourse(
-    startCount
-  ) {
-    setUnlockedCount(
-      Math.min(
-        course.length,
-        startCount
-      )
-    );
 
-    setMissionAnswered(0);
-    setMissionCorrect(0);
-    setMissionNewWords([]);
-    setScore(0);
-    setMisses(0);
-    setRecentResults([]);
+  function startConfetti() {
+    const pieces =
+      Array.from(
+        { length: 120 },
+        (_, index) => ({
+          id: index,
+          left:
+            Math.random() *
+            100,
+          delay:
+            Math.random() *
+            1.5,
+          duration:
+            2.5 +
+            Math.random() *
+              2.5,
+          rotate:
+            Math.random() *
+            720,
+          size:
+            6 +
+            Math.random() *
+              8
+        })
+      );
 
-    setScreen("game");
-
-    setTimeout(
-      makeQuestion,
-      50
-    );
+    setConfetti(pieces);
   }
+
+
+  function stopConfetti() {
+    setConfetti([]);
+  }
+
 
   function saveProgress() {
     if (!language) {
       return;
     }
 
-    const data = {
-      language,
-      course,
-      unlockedCount,
-      missionNumber
-    };
-
     localStorage.setItem(
       saveKey(language),
-      JSON.stringify(data)
-    );
-
-    setMessage(
-      "Progress saved!"
+      JSON.stringify({
+        course,
+        unlockedCount,
+        missionNumber
+      })
     );
   }
 
+
   function loadProgress() {
-    if (!language) {
-      return;
-    }
+    try {
+      const raw =
+        localStorage.getItem(
+          saveKey(language)
+        );
 
-    const saved =
-      loadSave(language);
+      if (!raw) {
+        setMessage(
+          "No saved progress found."
+        );
 
-    if (!saved) {
-      setMessage(
-        "No saved progress found."
+        return;
+      }
+
+      const data =
+        JSON.parse(raw);
+
+      setCourse(
+        data.course ??
+          makeCourse(language)
       );
 
-      return;
+      setUnlockedCount(
+        data.unlockedCount ??
+          12
+      );
+
+      setMissionNumber(
+        data.missionNumber ??
+          1
+      );
+
+      startMission();
     }
 
-    setCourse(
-      saved.course ??
-        getCourse(language)
-    );
+    catch {
+      setMessage(
+        "Could not load saved progress."
+      );
+    }
+  }
 
-    setUnlockedCount(
-      saved.unlockedCount ??
-        12
-    );
 
-    setMissionNumber(
-      saved.missionNumber ??
-        1
-    );
+  function startMission() {
+    stopConfetti();
+
+    setEnemies([]);
 
     setMissionAnswered(0);
     setMissionCorrect(0);
     setMissionNewWords([]);
+
     setScore(0);
     setMisses(0);
 
     setScreen("game");
 
-    setTimeout(
-      makeQuestion,
-      50
-    );
+    setRunning(true);
+
+    lastSpawnRef.current =
+      performance.now();
+
+    lastTimeRef.current =
+      performance.now();
+
+    setTimeout(() => {
+      spawnEnemy();
+      inputRef.current?.focus();
+    }, 100);
   }
 
+
   function finishMission() {
+    setRunning(false);
+    setEnemies([]);
+
     saveProgress();
+
+    startConfetti();
 
     setScreen(
       "missionComplete"
     );
   }
 
+
   function nextMission() {
+    stopConfetti();
+
     setMissionNumber(
       old => old + 1
     );
 
-    setMissionAnswered(0);
-    setMissionCorrect(0);
-    setMissionNewWords([]);
-    setScore(0);
-    setMisses(0);
-
-    setScreen("game");
-
     setTimeout(
-      makeQuestion,
-      50
+      startMission,
+      0
     );
   }
 
-  function buildPlacement() {
-    const count = 36;
 
-    const questions = [];
-
-    for (
-      let i = 0;
-      i < count;
-      i++
-    ) {
-      const index =
-        Math.round(
-          i /
-            (count - 1) *
-            (course.length - 1)
-        );
-
-      questions.push({
-        index,
-        word:
-          course[index]
-      });
-    }
-
-    setPlacement(
-      questions
-    );
-
-    setPlacementIndex(0);
-
-    setPlacementResults([]);
-
-    setScreen(
-      "placement"
-    );
-  }
-
-  function answerPlacement(
-    value
+  function beginLanguage(
+    selected
   ) {
-    const question =
-      placement[
-        placementIndex
-      ];
+    setLanguage(selected);
 
-    if (!question) {
-      return;
-    }
-
-    const correct =
-      normalize(
-        value,
-        language
-      ) ===
-      normalize(
-        question.word.target,
-        language
-      );
-
-    const results = [
-      ...placementResults,
-      {
-        courseIndex:
-          question.index,
-        correct
-      }
-    ];
-
-    setPlacementResults(
-      results
+    setCourse(
+      makeCourse(selected)
     );
 
-    if (
-      placementIndex + 1 >=
-      placement.length
-    ) {
-      finishPlacement(
-        results
-      );
-    }
+    setUnlockedCount(12);
 
-    else {
-      setPlacementIndex(
-        old => old + 1
-      );
-
-      setTyped("");
-    }
+    setScreen("start");
   }
 
-  function finishPlacement(
-    results
-  ) {
-    let best = 12;
 
-    for (
-      let i = 4;
-      i <
-      results.length;
-      i++
-    ) {
-      const window =
-        results.slice(
-          i - 4,
-          i + 1
-        );
-
-      const rate =
-        window.filter(
-          r => r.correct
-        ).length /
-        window.length;
-
-      if (rate >= 0.6) {
-        best =
-          results[i]
-            .courseIndex;
-      }
-    }
-
-    const start =
+  function beginCourse(count) {
+    setUnlockedCount(
       Math.min(
         course.length,
-        best + 12
-      );
-
-    setCourse(old =>
-      old.map(
-        (word, index) => {
-          if (
-            index <
-            start - 12
-          ) {
-            return {
-              ...word,
-
-              seen: 1,
-
-              typingMastery:
-                4,
-
-              recognitionMastery:
-                4,
-
-              listeningMastery:
-                3
-            };
-          }
-
-          return word;
-        }
+        count
       )
     );
 
-    setUnlockedCount(start);
-
-    setMissionAnswered(0);
-    setMissionCorrect(0);
-    setMissionNewWords([]);
-
-    setScreen("game");
-
-    setTimeout(
-      makeQuestion,
-      50
-    );
+    startMission();
   }
+
+
+  useEffect(() => {
+    if (!running) {
+      return;
+    }
+
+    function frame(time) {
+      let dt =
+        (time -
+          lastTimeRef.current) /
+        1000;
+
+      lastTimeRef.current =
+        time;
+
+      dt =
+        Math.min(
+          dt,
+          0.1
+        );
+
+      if (
+        time -
+          lastSpawnRef.current >=
+        SPAWN_DELAY
+      ) {
+        spawnEnemy();
+
+        lastSpawnRef.current =
+          time;
+      }
+
+      setEnemies(old => {
+        const updated = [];
+
+        const missed = [];
+
+        for (const enemy of old) {
+          const x =
+            enemy.x -
+            enemy.speed *
+              dt;
+
+          if (
+            x +
+              enemy.width <
+            0
+          ) {
+            missed.push(enemy);
+          }
+
+          else {
+            updated.push({
+              ...enemy,
+              x
+            });
+          }
+        }
+
+        if (missed.length) {
+          setTimeout(() => {
+            for (const enemy of missed) {
+              missEnemy(enemy);
+            }
+          }, 0);
+        }
+
+        return updated;
+      });
+
+      animationRef.current =
+        requestAnimationFrame(
+          frame
+        );
+    }
+
+    animationRef.current =
+      requestAnimationFrame(
+        frame
+      );
+
+    return () => {
+      cancelAnimationFrame(
+        animationRef.current
+      );
+    };
+  }, [
+    running,
+    course,
+    unlockedCount,
+    language,
+    newWordChance
+  ]);
+
 
   useEffect(() => {
     if (
-      missionComplete &&
-      screen === "game"
+      screen !== "game"
+    ) {
+      return;
+    }
+
+    if (
+      missionAnswered >=
+      MISSION_LENGTH
+    ) {
+      finishMission();
+    }
+
+    else if (
+      misses >=
+      MAX_MISSES
     ) {
       finishMission();
     }
   }, [
-    missionComplete,
+    missionAnswered,
+    misses,
     screen
   ]);
+
 
   useEffect(() => {
     if (
@@ -1011,46 +1312,47 @@ export default function useLanguageLearner() {
       inputRef.current?.focus();
     }
   }, [
-    currentQuestion,
-    screen
+    screen,
+    enemies
   ]);
 
   return {
     LANGUAGE_INFO,
     MISSION_LENGTH,
-    accuracy,
-    activeWords,
-    answerPlacement,
-    answerQuestion,
+    answerRecognition,
     beginCourse,
     beginLanguage,
-    buildPlacement,
+    confetti,
     course,
-    currentQuestion,
     currentUnit,
+    enemies,
+    gameRef,
+    handleEnter,
+    handleTyping,
     inputRef,
     language,
     loadProgress,
     message,
     misses,
+    missionAccuracy,
     missionAnswered,
     missionCorrect,
     missionNewWords,
     missionNumber,
     newWordChance,
     nextMission,
-    placement,
-    placementIndex,
     recentAccuracy,
     saveProgress,
     score,
     screen,
+    setEnemies,
+    setRunning,
     setScreen,
     setTyped,
     speak,
-    statusFor,
+    stopConfetti,
     typed,
     unlockedCount,
-    weakestMastery
+    wordStatus
   };
 }

@@ -110,11 +110,15 @@ hides hills hints hired hives hoard hobby holds holes homes homme honey
 honor hoofs hoped hopes horde horns horny horse hosts hotel hotly hound
 hours house hover hullo human humor hunts hurry hurts husky hyoid hyper
 
-icons ideal ideas idiot iliac ilium image imply incur index india inert
-infer infra inner inter intra irony issue items ivory
+icier icing icons ideal ideas idiom idiot idled idler idles idols idyll
+igloo image imply inapt inarm inbox incur index india indie inept inert
+infer infix infra inked inker inlay inned inner innit input inset intel
+inter intro ionic iotas irony isles issue itchy items ivory
 
-jails jelly jenny jerky jests jeune jewel joins joint joked jokes jolly
-judge juice jumps
+jacks jades jails jammy japan jazzy jeans jelly jerks jesus jetty jewel
+jiffy jingo jinks jocky joins joint joked joker jokes jokey jolly joust
+jolts jolty joule joyed judge judgy juice juicy juked jukes jumbo jumps
+jumpy junky
 
 karma kayak keeps kills kimbo kinds kings kinky kiosk kiwis kluge klutz
 knack knave kneel knees knelt knife knock knoll knots known knows koala
@@ -207,9 +211,13 @@ traps trash tread treat trees trend trial tribe trick tried tries troop
 trout truce truly trunk trust truth tsars tubes tufts tumor tuned tunic
 turks turns tutor tweed tweet twice twigs twins twist tying tyler types
 
-uhlan ukase ulcer ulnae ulnar ultra uncle under undue unfit union unite
-units unity until upper upset urate urban urged urine usage users using
-usual utter
+udder ugged ultra ummed unapt unarm unary unbag unban unbar unbid unbox
+uncap uncle uncut under unsid undos undue undug unfed unfit unfix ungag
+unget ungod ungot ungum unhat unhip unify union unite units unity unjam
+unkid unlaw unlay unlit unmix unpay unpeg unpin unred unrid unrig unrip
+unsaw unsay unsee unset unsew unsex until unwon unzip upjet upped upper
+upran uprun upset urban urged urger urges urial urine usage users usher
+using usual utter uvula
 
 vague vagus valet valid valor valse value valve varix varus vault veins
 veldt venom venue verge verse vexed vicar vices video views vigor villa
@@ -227,7 +235,9 @@ woven wraps wrath wreck wring wrist write writs wrong wrote wrung wurst
 
 xenon xerox xrays xylem
 
-yacht yards years yells yield yogas young yours youth
+yahoo yanks yards yarns yawns yawny yeahs yearn years yeast yeesh yells
+yelps yetis yield yikes yippy yogas yolks yolky young yours youth yowza
+yucks yucky yummy
 
-zebra zeros zesty zincs zippy zonal zooid zooms
+zappy zebra zeros zests zesty zetas zippy zonal zoned zones zooms
 `.trim().split(/\s+/);

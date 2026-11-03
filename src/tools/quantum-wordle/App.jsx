@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ANSWERS, GUESSES } from "./words.js";
+import QuantumWordleView from "./QuantumWordleView.jsx";
 import "./App.css";
 
 const WORD_LENGTH = 5;
@@ -15,13 +16,6 @@ const VALID_GUESSES = new Set([
   ...normalizeWords(GUESSES),
   ...ALL_ANSWERS
 ]);
-
-const COLORS = {
-  green: "#538d4e",
-  yellow: "#b59f3b",
-  gray: "#787c7e",
-  empty: "#3a3a3c"
-};
 
 function randomItem(array) {
   return array[Math.floor(Math.random() * array.length)];
@@ -260,68 +254,6 @@ function createGame(count) {
   };
 }
 
-function Tile({ letter = "", color = null, invalid = false }) {
-  return (
-    <div
-      className="qw-tile"
-      style={{
-        width: 54,
-        height: 54,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        border: letter ? "2px solid #565758" : "2px solid #3a3a3c",
-        background: color ? COLORS[color] : "transparent",
-        color: "white",
-        fontSize: 28,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        opacity: invalid ? 0.36 : 1,
-        position: "relative",
-        boxSizing: "border-box"
-      }}
-    >
-      {letter}
-      {invalid && (
-        <span
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: "50%",
-            height: 3,
-            background: "#ff6161",
-            transform: "rotate(-16deg)"
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function GuessRow({ guess, feedback, invalid }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        gap: 5
-      }}
-    >
-      {Array.from({ length: WORD_LENGTH }, (_, i) => (
-        <Tile
-          key={i}
-          letter={guess?.[i] || ""}
-          color={feedback?.[i] || null}
-          invalid={invalid}
-        />
-      ))}
-    </div>
-  );
-}
-
-const KEY_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
-
 export default function App() {
   const [wordCount, setWordCount] = useState(
     Math.min(100, ALL_ANSWERS.length)
@@ -536,258 +468,18 @@ export default function App() {
     rows.push({ guess: input, feedback: null, invalid: false });
   }
 
-  const remainingRows = MAX_GUESSES - rows.length;
-
   return (
-    <div
-      className="quantum-wordle"
-      style={{
-        minHeight: "100vh",
-        background: "#121213",
-        color: "#ffffff",
-        padding: "24px 12px",
-        fontFamily: "Arial, sans-serif",
-        textAlign: "center"
-      }}
-    >
-      <h1 style={{ margin: "0 0 8px" }}>
-        Quantum Wordle
-      </h1>
-
-      <p style={{ color: "#aaa", marginBottom: 22 }}>
-        The answer is uncertain. The clues may contradict.
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexWrap: "wrap",
-          gap: 12,
-          marginBottom: 18
-        }}
-      >
-        <label htmlFor="qw-word-count">
-          Starting possible words:
-        </label>
-
-        <input
-          id="qw-word-count"
-          type="number"
-          min="1"
-          max={ALL_ANSWERS.length}
-          value={wordCount}
-          onChange={e => setWordCount(e.target.value)}
-          style={{
-            width: 85,
-            padding: 7,
-            background: "#242426",
-            color: "white",
-            border: "1px solid #555",
-            borderRadius: 5
-          }}
-        />
-
-        <button
-          onClick={newGame}
-          style={{
-            padding: "9px 16px",
-            background: "#538d4e",
-            color: "white",
-            border: 0,
-            borderRadius: 5,
-            cursor: "pointer",
-            fontWeight: "bold"
-          }}
-        >
-          New Game
-        </button>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: 24,
-          marginBottom: 20,
-          flexWrap: "wrap"
-        }}
-      >
-        <div>
-          <strong>{game.solutions.length}</strong>
-          <div style={{ fontSize: 12, color: "#aaa" }}>
-            Possible words
-          </div>
-        </div>
-
-        <div>
-          <strong>{game.paradoxes}</strong>
-          <div style={{ fontSize: 12, color: "#aaa" }}>
-            Paradoxes
-          </div>
-        </div>
-
-        <div>
-          <strong>{game.guesses.length}/{MAX_GUESSES}</strong>
-          <div style={{ fontSize: 12, color: "#aaa" }}>
-            Guesses
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 5,
-          margin: "0 auto 22px",
-          width: "fit-content"
-        }}
-      >
-        {rows.map((row, i) => (
-          <GuessRow
-            key={i}
-            guess={row.guess}
-            feedback={row.feedback}
-            invalid={row.invalid}
-          />
-        ))}
-
-        {Array.from({ length: remainingRows }, (_, i) => (
-          <GuessRow key={`empty-${i}`} />
-        ))}
-      </div>
-
-      <div
-        style={{
-          minHeight: 42,
-          color:
-            game.status === "won"
-              ? "#7bc67b"
-              : message.includes("paradox")
-              ? "#ffcc66"
-              : "#ddd",
-          fontWeight: "bold",
-          maxWidth: 520,
-          margin: "0 auto"
-        }}
-      >
-        {message}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 6,
-          maxWidth: 520,
-          margin: "0 auto"
-        }}
-      >
-        {KEY_ROWS.map((row, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              gap: 4,
-              justifyContent: "center",
-              width: "100%"
-            }}
-          >
-            {i === 2 && (
-              <button
-                onClick={() => handleKey("ENTER")}
-                style={specialKeyStyle}
-              >
-                ENTER
-              </button>
-            )}
-
-            {[...row].map(letter => (
-              <button
-                key={letter}
-                onClick={() => handleKey(letter)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  maxWidth: 44,
-                  height: 52,
-                  border: 0,
-                  borderRadius: 4,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  color: "white",
-                  background: keyboardColors[letter]
-                    ? COLORS[keyboardColors[letter]]
-                    : "#818384"
-                }}
-              >
-                {letter}
-              </button>
-            ))}
-
-            {i === 2 && (
-              <button
-                onClick={() => handleKey("BACKSPACE")}
-                style={specialKeyStyle}
-              >
-                ⌫
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          maxWidth: 540,
-          margin: "28px auto",
-          padding: 15,
-          border: "1px solid #444",
-          borderRadius: 8,
-          textAlign: "left",
-          color: "#bbb",
-          lineHeight: 1.55,
-          fontSize: 14
-        }}
-      >
-        <strong style={{ color: "white" }}>
-          How Quantum Wordle works
-        </strong>
-
-        <p>
-          Each guess receives feedback from a randomly selected
-          possible answer. Unlike ordinary Wordle, the answer
-          supplying the next clue can change.
-        </p>
-
-        <p>
-          When new feedback visibly contradicts an earlier clue,
-          a quantum paradox occurs. The earlier clue is crossed
-          out, and the answer that produced it is eliminated.
-        </p>
-
-        <p style={{ marginBottom: 0 }}>
-          Green means correct position. Yellow means present
-          elsewhere. Gray means no additional occurrence of
-          that letter is present.
-        </p>
-      </div>
-    </div>
+    <QuantumWordleView
+      answerCount={ALL_ANSWERS.length}
+      game={game}
+      keyboardColors={keyboardColors}
+      maxGuesses={MAX_GUESSES}
+      message={message}
+      onKey={handleKey}
+      onNewGame={newGame}
+      onWordCountChange={setWordCount}
+      rows={rows}
+      wordCount={wordCount}
+    />
   );
 }
-
-const specialKeyStyle = {
-  padding: "0 8px",
-  minWidth: 48,
-  height: 52,
-  background: "#565758",
-  color: "white",
-  border: 0,
-  borderRadius: 4,
-  fontSize: 12,
-  fontWeight: "bold",
-  cursor: "pointer"
-};
